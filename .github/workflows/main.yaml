@@ -1,0 +1,48 @@
+name: CI/CD Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main  # Deployment triggers whenever you push to the main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # 1. Authenticate with Google Cloud using your Secret
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # 2. Set up gcloud CLI
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+
+      # 3. Create the keys.json file from the Secret (needed for your Python code)
+      - name: Create Keys File
+        run: echo '${{ secrets.GCP_SA_KEY }}' > keys.json
+
+      # 4. Configure Docker to use Google Container Registry
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+
+      # 5. Build and Push the Docker image
+      - name: Build and Push Container
+        run: |
+          docker build -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/streamlit-benchmark:latest .
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/streamlit-benchmark:latest
+
+      # 6. Deploy to Google Cloud Run
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy streamlit-benchmark \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/streamlit-benchmark:latest \
+            --region europe-west9 \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars="GOOGLE_APPLICATION_CREDENTIALS=keys.json"
